@@ -88,15 +88,17 @@ jobs:
         working-directory: /tmp/digests
         run: |
           set -eux
+          # digest-файлы названы как <sha256-hex> — нужен полный ref image@sha256:hex
+          SOURCES="$(printf "${IMAGE_NAME}@sha256:%s " *)"
           if [ "${{ matrix.target }}" = "prod" ]; then
             docker buildx imagetools create \
               --tag "${IMAGE_NAME}:prod" \
               --tag "${IMAGE_NAME}:latest" \
-              $(ls)
+              ${SOURCES}
           else
             docker buildx imagetools create \
               --tag "${IMAGE_NAME}:dev" \
-              $(ls)
+              ${SOURCES}
           fi
 
       - name: Inspect
