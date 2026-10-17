@@ -61,11 +61,11 @@ RUN apk add --no-cache \
         xml \
         soap \
         sockets \
-    && pecl install redis \
-    && pecl install imagick \
-    && pecl install swoole \
-    && pecl install opentelemetry \
-    && pecl install protobuf \
+    && MAKEFLAGS="-j$(nproc)" pecl install redis \
+    && MAKEFLAGS="-j$(nproc)" pecl install imagick \
+    && MAKEFLAGS="-j$(nproc)" pecl install swoole \
+    && MAKEFLAGS="-j$(nproc)" pecl install opentelemetry \
+    && MAKEFLAGS="-j$(nproc)" pecl install protobuf \
     && docker-php-ext-enable redis imagick swoole opentelemetry protobuf \
     && apk del .build-deps \
     && rm -rf /tmp/pear /var/cache/apk/*
