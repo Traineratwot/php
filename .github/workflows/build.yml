@@ -12,12 +12,14 @@ env:
 jobs:
   # Нативные раннеры per-arch: amd64 и arm64 параллельно, без QEMU.
   # QEMU arm64 даёт ~5–10× замедление — поэтому 30+ минут.
+  # Матрица: PHP 8.2 / 8.4 / 8.5 (security-релизы CVE-2026-109618/109619).
   build:
-    name: ${{ matrix.target }} / ${{ matrix.platform }}
+    name: ${{ matrix.php }} ${{ matrix.target }} / ${{ matrix.platform }}
     runs-on: ${{ matrix.platform == 'linux/arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:
+        php: ["8.2.35", "8.4.27", "8.5.12"]
         target: [prod, dev]
         platform: [linux/amd64, linux/arm64]
     steps:
@@ -45,10 +47,11 @@ jobs:
           target: ${{ matrix.target }}
           platforms: ${{ matrix.platform }}
           build-args: |
+            PHP_VERSION=${{ matrix.php }}
             BUILD_DATE=${{ env.BUILD_DATE }}
           outputs: type=image,name=${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=gha,scope=${{ matrix.target }}-${{ matrix.platform }}
-          cache-to: type=gha,scope=${{ matrix.target }}-${{ matrix.platform }},mode=max
+          cache-from: type=gha,scope=${{ matrix.php }}-${{ matrix.target }}-${{ matrix.platform }}
+          cache-to: type=gha,scope=${{ matrix.php }}-${{ matrix.target }}-${{ matrix.platform }},mode=max
 
       - name: Export digest
         run: |
@@ -59,25 +62,28 @@ jobs:
       - name: Upload digest
         uses: actions/upload-artifact@v4
         with:
-          name: digests-${{ matrix.target }}-${{ strategy.job-index }}
+          name: digests-${{ matrix.php }}-${{ matrix.target }}-${{ strategy.job-index }}
           path: /tmp/digests/*
           if-no-files-found: error
           retention-days: 1
 
-  # Склеиваем amd64 + arm64 в multi-arch теги
+  # Склеиваем amd64 + arm64 в multi-arch теги.
+  # Теги prod / latest / dev — всегда PHP 8.4 (не менять!).
   merge:
-    name: Merge ${{ matrix.target }}
+    name: Merge ${{ matrix.php }} ${{ matrix.target }}
     runs-on: ubuntu-latest
     needs: [build]
     strategy:
+      fail-fast: false
       matrix:
+        php: ["8.2.35", "8.4.27", "8.5.12"]
         target: [prod, dev]
     steps:
       - name: Download digests
         uses: actions/download-artifact@v4
         with:
           path: /tmp/digests
-          pattern: digests-${{ matrix.target }}-*
+          pattern: digests-${{ matrix.php }}-${{ matrix.target }}-*
           merge-multiple: true
 
       - name: Set up Docker Buildx
@@ -91,25 +97,43 @@ jobs:
 
       - name: Create multi-arch tags
         working-directory: /tmp/digests
+        env:
+          PHP: ${{ matrix.php }}
+          TARGET: ${{ matrix.target }}
         run: |
           set -eux
           # digest-файлы названы как <sha256-hex> — нужен полный ref image@sha256:hex
           SOURCES="$(printf "${IMAGE_NAME}@sha256:%s " *)"
-          if [ "${{ matrix.target }}" = "prod" ]; then
-            docker buildx imagetools create \
-              --tag "${IMAGE_NAME}:prod" \
-              --tag "${IMAGE_NAME}:latest" \
-              ${SOURCES}
+
+          # 8.2.35 -> 8.2, 8.4.27 -> 8.4, 8.5.12 -> 8.5
+          SHORT="${PHP%.*}"
+
+          TAG_ARGS=()
+          if [ "$TARGET" = "prod" ]; then
+            if [ "$SHORT" = "8.4" ]; then
+              # legacy-теги: остаются на 8.4, как раньше
+              TAG_ARGS+=(--tag "${IMAGE_NAME}:prod")
+              TAG_ARGS+=(--tag "${IMAGE_NAME}:latest")
+            fi
+            TAG_ARGS+=(--tag "${IMAGE_NAME}:${SHORT}-prod")
+            TAG_ARGS+=(--tag "${IMAGE_NAME}:${SHORT}")
           else
-            docker buildx imagetools create \
-              --tag "${IMAGE_NAME}:dev" \
-              ${SOURCES}
+            if [ "$SHORT" = "8.4" ]; then
+              TAG_ARGS+=(--tag "${IMAGE_NAME}:dev")
+            fi
+            TAG_ARGS+=(--tag "${IMAGE_NAME}:${SHORT}-dev")
           fi
 
+          docker buildx imagetools create "${TAG_ARGS[@]}" ${SOURCES}
+
       - name: Inspect
+        env:
+          PHP: ${{ matrix.php }}
+          TARGET: ${{ matrix.target }}
         run: |
-          if [ "${{ matrix.target }}" = "prod" ]; then
-            docker buildx imagetools inspect "${IMAGE_NAME}:prod"
+          SHORT="${PHP%.*}"
+          if [ "$TARGET" = "prod" ]; then
+            docker buildx imagetools inspect "${IMAGE_NAME}:${SHORT}-prod"
           else
-            docker buildx imagetools inspect "${IMAGE_NAME}:dev"
+            docker buildx imagetools inspect "${IMAGE_NAME}:${SHORT}-dev"
           fi

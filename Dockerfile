@@ -1,10 +1,11 @@
 # ============================================================
 # STAGE: base — общая база для prod и dev
 # ============================================================
-# PHP_VERSION пиннится: 8.4.27 — security fix
-# CVE-2026-109618, CVE-2026-109619 (unauthenticated RCE)
+# PHP_VERSION пиннится на security-релизы:
+#   8.2.35 / 8.4.27 / 8.5.12 — fix CVE-2026-109618, CVE-2026-109619
 ARG PHP_VERSION=8.4.27
 FROM php:${PHP_VERSION}-cli-alpine AS base
+ARG PHP_VERSION
 
 LABEL maintainer="Traineratwot <traineratwot@yandex.ru>"
 LABEL org.opencontainers.image.source="https://github.com/Traineratwot/php"
@@ -106,8 +107,9 @@ WORKDIR /app
 # STAGE: prod
 # ============================================================
 FROM base AS prod
+ARG PHP_VERSION
 
-LABEL description="PHP 8.4.27 Alpine — production base image (CVE-2026-109618/CVE-2026-109619 fixed)"
+LABEL description="PHP ${PHP_VERSION} Alpine — production base image (CVE-2026-109618/CVE-2026-109619 fixed)"
 
 RUN { \
         echo 'opcache.enable=1'; \
@@ -128,8 +130,9 @@ CMD ["php", "-a"]
 # STAGE: dev
 # ============================================================
 FROM base AS dev
+ARG PHP_VERSION
 
-LABEL description="PHP 8.4.27 Alpine — development base image with Xdebug & tools (CVE-2026-109618/CVE-2026-109619 fixed)"
+LABEL description="PHP ${PHP_VERSION} Alpine — development base image with Xdebug & tools (CVE-2026-109618/CVE-2026-109619 fixed)"
 
 RUN apk add --no-cache \
         procps \
@@ -145,7 +148,20 @@ RUN apk add --no-cache \
         busybox-extras
 
 RUN apk add --no-cache --virtual .xdebug-build-deps $PHPIZE_DEPS linux-headers \
-    && pecl install xdebug \
+    && export MAKEFLAGS="-j$(nproc)" \
+    && for i in 1 2 3 4 5 6 7 8; do \
+         echo "pecl xdebug: attempt ${i}"; \
+         if curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 \
+                 -o /tmp/xdebug.tgz https://pecl.php.net/get/xdebug \
+             && pecl install -f /tmp/xdebug.tgz; then \
+             rm -f /tmp/xdebug.tgz; \
+             break; \
+         fi; \
+         echo "pecl xdebug: failed (attempt ${i}), retrying..." >&2; \
+         rm -rf /tmp/pear /tmp/xdebug.tgz; \
+         [ "$i" -eq 8 ] && exit 1; \
+         sleep $((i * 5)); \
+       done \
     && docker-php-ext-enable xdebug \
     && apk del .xdebug-build-deps \
     && rm -rf /tmp/pear /var/cache/apk/*

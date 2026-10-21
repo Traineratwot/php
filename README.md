@@ -1,16 +1,28 @@
 # traineratwot/php
 
-PHP 8.4 Alpine base image for Ay-tour (prod + dev).
+PHP Alpine base images for Ay-tour (prod + dev).
 
-Base: `php:8.4.27-cli-alpine` — security release fixing CVE-2026-109618 / CVE-2026-109619 (unauthenticated RCE).
+Security baseline: CVE-2026-109618 / CVE-2026-109619 (unauthenticated RCE) fixed in all builds.
+
+| PHP | Base image | Status |
+|---|---|---|
+| 8.2 | `php:8.2.35-cli-alpine` | supported (EOL 2026-12-31) |
+| 8.4 | `php:8.4.27-cli-alpine` | default |
+| 8.5 | `php:8.5.12-cli-alpine` | current |
 
 ## Tags
 
-| Tag | Target | Description |
-|---|---|---|
-| `traineratwot/php:prod` | `prod` | Production (opcache JIT) |
-| `traineratwot/php:latest` | `prod` | Alias for `prod` |
-| `traineratwot/php:dev` | `dev` | Dev tools + Xdebug |
+| Tag | PHP | Target | Description |
+|---|---|---|---|
+| `traineratwot/php:latest` | **8.4** | `prod` | Alias for `prod` (default) |
+| `traineratwot/php:prod` | **8.4** | `prod` | Production (opcache JIT) |
+| `traineratwot/php:dev` | **8.4** | `dev` | Dev tools + Xdebug |
+| `traineratwot/php:8.4` / `8.4-prod` | 8.4 | `prod` | Same as `prod` |
+| `traineratwot/php:8.4-dev` | 8.4 | `dev` | Same as `dev` |
+| `traineratwot/php:8.2` / `8.2-prod` | 8.2 | `prod` | Production |
+| `traineratwot/php:8.2-dev` | 8.2 | `dev` | Dev tools + Xdebug |
+| `traineratwot/php:8.5` / `8.5-prod` | 8.5 | `prod` | Production |
+| `traineratwot/php:8.5-dev` | 8.5 | `dev` | Dev tools + Xdebug |
 
 ## Extensions
 
@@ -53,22 +65,43 @@ Platforms: `linux/amd64`, `linux/arm64`.
 
 ### Local build (optional)
 
-Always pass `BUILD_DATE` so `/version` is written and Docker cache is invalidated:
+Always pass `BUILD_DATE` so `/version` is written and Docker cache is invalidated.
+Pass `PHP_VERSION` to pick the line (default is 8.4.27):
 
 ```bash
 BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
+# 8.4 (default, produces prod/latest/dev)
 docker buildx build --platform linux/amd64,linux/arm64 \
   --build-arg BUILD_DATE="$BUILD_DATE" \
-  --target prod \
-  --tag traineratwot/php:prod \
-  --tag traineratwot/php:latest \
+  --target prod --tag traineratwot/php:prod --tag traineratwot/php:latest \
   --push .
 
 docker buildx build --platform linux/amd64,linux/arm64 \
   --build-arg BUILD_DATE="$BUILD_DATE" \
-  --target dev \
-  --tag traineratwot/php:dev \
+  --target dev --tag traineratwot/php:dev \
+  --push .
+
+# 8.2
+docker buildx build --platform linux/amd64,linux/arm64 \
+  --build-arg PHP_VERSION=8.2.35 --build-arg BUILD_DATE="$BUILD_DATE" \
+  --target prod --tag traineratwot/php:8.2-prod --tag traineratwot/php:8.2 \
+  --push .
+
+docker buildx build --platform linux/amd64,linux/arm64 \
+  --build-arg PHP_VERSION=8.2.35 --build-arg BUILD_DATE="$BUILD_DATE" \
+  --target dev --tag traineratwot/php:8.2-dev \
+  --push .
+
+# 8.5
+docker buildx build --platform linux/amd64,linux/arm64 \
+  --build-arg PHP_VERSION=8.5.12 --build-arg BUILD_DATE="$BUILD_DATE" \
+  --target prod --tag traineratwot/php:8.5-prod --tag traineratwot/php:8.5 \
+  --push .
+
+docker buildx build --platform linux/amd64,linux/arm64 \
+  --build-arg PHP_VERSION=8.5.12 --build-arg BUILD_DATE="$BUILD_DATE" \
+  --target dev --tag traineratwot/php:8.5-dev \
   --push .
 ```
 
