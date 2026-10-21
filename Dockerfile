@@ -64,11 +64,29 @@ RUN apk add --no-cache \
         xml \
         soap \
         sockets \
-    && MAKEFLAGS="-j$(nproc)" pecl install redis \
-    && MAKEFLAGS="-j$(nproc)" pecl install imagick \
-    && MAKEFLAGS="-j$(nproc)" pecl install swoole \
-    && MAKEFLAGS="-j$(nproc)" pecl install opentelemetry \
-    && MAKEFLAGS="-j$(nproc)" pecl install protobuf \
+    && export MAKEFLAGS="-j$(nproc)" \
+    && install_pecl() { \
+        name="$1"; \
+        for i in 1 2 3 4 5 6 7 8; do \
+            echo "pecl ${name}: attempt ${i}"; \
+            if curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 \
+                    -o "/tmp/${name}.tgz" "https://pecl.php.net/get/${name}" \
+                && pecl install -f "/tmp/${name}.tgz"; then \
+                rm -f "/tmp/${name}.tgz"; \
+                return 0; \
+            fi; \
+            echo "pecl ${name}: failed (attempt ${i}), retrying..." >&2; \
+            rm -rf /tmp/pear "/tmp/${name}.tgz"; \
+            sleep $((i * 5)); \
+        done; \
+        echo "pecl ${name}: all attempts failed" >&2; \
+        return 1; \
+    } \
+    && install_pecl redis \
+    && install_pecl imagick \
+    && install_pecl swoole \
+    && install_pecl opentelemetry \
+    && install_pecl protobuf \
     && docker-php-ext-enable redis imagick swoole opentelemetry protobuf \
     && apk del .build-deps \
     && rm -rf /tmp/pear /var/cache/apk/*
