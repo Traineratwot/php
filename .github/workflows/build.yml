@@ -24,6 +24,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set build date
+        run: echo "BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -41,6 +44,8 @@ jobs:
           file: ./Dockerfile
           target: ${{ matrix.target }}
           platforms: ${{ matrix.platform }}
+          build-args: |
+            BUILD_DATE=${{ env.BUILD_DATE }}
           outputs: type=image,name=${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=${{ matrix.target }}-${{ matrix.platform }}
           cache-to: type=gha,scope=${{ matrix.target }}-${{ matrix.platform }},mode=max

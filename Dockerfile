@@ -1,7 +1,10 @@
 # ============================================================
 # STAGE: base — общая база для prod и dev
 # ============================================================
-FROM php:8.4-cli-alpine AS base
+# PHP_VERSION пиннится: 8.4.27 — security fix
+# CVE-2026-109618, CVE-2026-109619 (unauthenticated RCE)
+ARG PHP_VERSION=8.4.27
+FROM php:${PHP_VERSION}-cli-alpine AS base
 
 LABEL maintainer="Traineratwot <traineratwot@yandex.ru>"
 LABEL org.opencontainers.image.source="https://github.com/Traineratwot/php"
@@ -72,6 +75,13 @@ RUN apk add --no-cache \
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
+# BUILD_DATE передаётся из CI. Объявляется и используется только здесь,
+# чтобы смена даты не сбивала cache тяжёлых слоёв выше.
+# cat /version — UTC ISO-8601; дата >= 2026-10-21 = security-фикс PHP.
+ARG BUILD_DATE=unknown
+RUN printf '%s\n' "${BUILD_DATE}" > /version
+LABEL org.opencontainers.image.created="${BUILD_DATE}"
+
 WORKDIR /app
 
 # ============================================================
@@ -79,7 +89,7 @@ WORKDIR /app
 # ============================================================
 FROM base AS prod
 
-LABEL description="PHP 8.4 Alpine — production base image"
+LABEL description="PHP 8.4.27 Alpine — production base image (CVE-2026-109618/CVE-2026-109619 fixed)"
 
 RUN { \
         echo 'opcache.enable=1'; \
@@ -101,7 +111,7 @@ CMD ["php", "-a"]
 # ============================================================
 FROM base AS dev
 
-LABEL description="PHP 8.4 Alpine — development base image with Xdebug & tools"
+LABEL description="PHP 8.4.27 Alpine — development base image with Xdebug & tools (CVE-2026-109618/CVE-2026-109619 fixed)"
 
 RUN apk add --no-cache \
         procps \
