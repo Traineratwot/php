@@ -49,35 +49,36 @@ RUN apk add --no-cache \
         --with-freetype \
         --with-jpeg \
         --with-webp \
-    && docker-php-ext-install -j"$(nproc)" \
-        pdo_pgsql \
-        pgsql \
-        pdo_mysql \
-        mysqli \
-        mbstring \
-        exif \
-        pcntl \
-        bcmath \
-        gd \
-        opcache \
-        zip \
-        intl \
-        xml \
-        soap \
-        sockets \
-    && export MAKEFLAGS="-j$(nproc)" \
+    && for e in \
+         pdo_pgsql pgsql pdo_mysql mysqli mbstring exif pcntl bcmath \
+         gd opcache zip intl xml soap sockets; do \
+         # PHP 8.5+: opcache собран статически и не ставится как shared
+         if [ "$e" = "opcache" ] && php -n -m | grep -qi '^Zend OPcache$'; then \
+             echo "skip $e (compiled into PHP)"; \
+             continue; \
+         fi; \
+         docker-php-ext-install -j"$(nproc)" "$e"; \
+     done \
     && install_pecl() { \
         name="$1"; \
         for i in 1 2 3 4 5 6 7 8; do \
             echo "pecl ${name}: attempt ${i}"; \
+            rm -rf "/tmp/pecl-${name}"; \
             if curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 \
                     -o "/tmp/${name}.tgz" "https://pecl.php.net/get/${name}" \
-                && pecl install -f "/tmp/${name}.tgz"; then \
-                rm -f "/tmp/${name}.tgz"; \
+                && mkdir -p "/tmp/pecl-${name}" \
+                && tar -xzf "/tmp/${name}.tgz" -C "/tmp/pecl-${name}" --strip-components=1 \
+                && (cd "/tmp/pecl-${name}" \
+                    && phpize \
+                    && ./configure \
+                    && make -j"$(nproc)" \
+                    && ls modules/ \
+                    && MAKEFLAGS= make -j1 install); then \
+                rm -rf "/tmp/pecl-${name}" "/tmp/${name}.tgz"; \
                 return 0; \
             fi; \
             echo "pecl ${name}: failed (attempt ${i}), retrying..." >&2; \
-            rm -rf /tmp/pear "/tmp/${name}.tgz"; \
+            rm -rf "/tmp/pecl-${name}" "/tmp/${name}.tgz" /tmp/pear; \
             sleep $((i * 5)); \
         done; \
         echo "pecl ${name}: all attempts failed" >&2; \
@@ -148,17 +149,24 @@ RUN apk add --no-cache \
         busybox-extras
 
 RUN apk add --no-cache --virtual .xdebug-build-deps $PHPIZE_DEPS linux-headers \
-    && export MAKEFLAGS="-j$(nproc)" \
     && for i in 1 2 3 4 5 6 7 8; do \
          echo "pecl xdebug: attempt ${i}"; \
+         rm -rf /tmp/pecl-xdebug; \
          if curl -fsSL --retry 3 --retry-all-errors --retry-delay 2 \
                  -o /tmp/xdebug.tgz https://pecl.php.net/get/xdebug \
-             && pecl install -f /tmp/xdebug.tgz; then \
-             rm -f /tmp/xdebug.tgz; \
+             && mkdir -p /tmp/pecl-xdebug \
+             && tar -xzf /tmp/xdebug.tgz -C /tmp/pecl-xdebug --strip-components=1 \
+             && (cd /tmp/pecl-xdebug \
+                 && phpize \
+                 && ./configure \
+                 && make -j"$(nproc)" \
+                 && ls modules/ \
+                 && MAKEFLAGS= make -j1 install); then \
+             rm -rf /tmp/pecl-xdebug /tmp/xdebug.tgz; \
              break; \
          fi; \
          echo "pecl xdebug: failed (attempt ${i}), retrying..." >&2; \
-         rm -rf /tmp/pear /tmp/xdebug.tgz; \
+         rm -rf /tmp/pecl-xdebug /tmp/xdebug.tgz /tmp/pear; \
          [ "$i" -eq 8 ] && exit 1; \
          sleep $((i * 5)); \
        done \
